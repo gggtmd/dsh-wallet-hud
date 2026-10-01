@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# pnpm / npm artifacts
+node_modules/
+*.tgz
+
+# local editor state
+.vscode/
+.idea/

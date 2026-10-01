@@ -1,0 +1,3 @@
+- insert:
+    - id: wallet-hud
+      name: '@local/dsh-wallet-hud'

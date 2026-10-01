@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Wallet HUD",
+    "description": "Shows the signed-in account's wallet balance in the sidebar footer, refreshed on click."
+  }
+}
