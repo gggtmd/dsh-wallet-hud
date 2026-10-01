@@ -274,7 +274,14 @@ window.__ModuleLoader__.load({
 		 */
 		function WalletBalance({ wide = true, wallet, t }) {
 			const state = useWalletStore(wallet)
-			const payload = state.phase === 'ready' ? state.value : undefined
+			/**
+			 * Last adopted payload, kept across phases. A refresh sets phase
+			 * `refreshing` while the previous payload still stands, so it must not
+			 * be dropped here: doing so made the chip fall into the `absent` branch
+			 * and flash "signed out" on every click, focus and poll until the
+			 * response landed.
+			 */
+			const payload = state.value
 			/**
 			 * Outcome of the last read. `absent` is the account service reporting no
 			 * signed-in account and `failed` is an in-band or thrown query failure;
@@ -313,6 +320,7 @@ window.__ModuleLoader__.load({
 				lines.push(state.error === 'unsupported' ? t('wallet.error.unsupported') : state.error ?? t('wallet.failed'))
 			}
 			if (state.at > 0) lines.push(t('wallet.tooltip.updated', { time: formatTime(state.at) }))
+			if (state.phase === 'refreshing') lines.push(t('wallet.loading'))
 			lines.push(t('wallet.tooltip.hint'))
 
 			const placeholder =

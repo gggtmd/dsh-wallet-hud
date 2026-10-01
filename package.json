@@ -1,8 +1,11 @@
 {
   "name": "@local/dsh-wallet-hud",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node test/render.test.mjs"
+  },
   "description": "Sidebar DeepSeek wallet balance for the Harness Web UI",
   "license": "MIT",
   "exports": {

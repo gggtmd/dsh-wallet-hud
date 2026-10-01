@@ -12,7 +12,7 @@
 
 复用账户子系统已有的 Remote `ctx.remote.account.getBalance({version, locale, timezoneOffsetSeconds})`。
 返回 `null`（未登录/凭据换代）｜`{status:'ready', value:[{currency,balance}], bonusWallets:[…]}`｜`{status:'failed'}`（可重试）。
-三种状态分别渲染为「未登录」「金额」「查询失败」，**任何失败都不会显示成 ¥0.00**。
+三种状态分别渲染为「未登录」「金额」「查询失败」，**任何失败都不会显示成 ¥0.00**。刷新期间（phase `refreshing`）**继续显示上一次的金额**，tooltip 里补一行「查询中」——否则重新读取的瞬间会退化成「未登录」，看起来像掉了登录态（1.0.1 修的就是这个）。
 
 `version`/`locale`/`timezoneOffsetSeconds` 每次调用时现取，因为宿主会把请求方 UI 的语言和时区报给 Platform。
 
@@ -28,6 +28,7 @@ cordis.patch.yml    bundle 的补丁：insert 一行 wallet-hud
 index.js            host 半边，空 apply()（必须存在，供 Loader import）
 client.js           浏览器 bundle（手写 lazy-CJS 格式，只 require 基线模块 react）
 locale/en.json      插件管理器卡片文案（标题/描述），zh.json 同结构
+test/render.test.mjs 渲染回归测试（`npm test`；`LEGACY=1` 复现 1.0.0 的「未登录」闪烁）
 ```
 
 `client.js` 是手写的、不经过构建的 bundle，格式与官方模板一致：
@@ -131,6 +132,21 @@ seats          : [{"slot":"sidebar.footer.action","id":"wallet-balance","order":
 ```
 
 即 bundle 可加载、`apply()` 无悬空引用、只注册余额这一处座位；`package.json` 的 `dsh.client.inject` 也同步去掉了 `ui-conversation` 与 `ui-chat`（原先只为 `conversation.composer.dock` 的归属与排序而加）。
+
+**1.0.1 的修复有回归测试**：`test/render.test.mjs` 不复制组件逻辑，而是从 bundle 里**捕获 `ctx.slots.register` 收到的组件本体**再真实渲染它，用可控的 `getBalance` promise 逐步驱动六个阶段（首次加载中 / 加载完成 / 刷新在途 / 刷新返回 / 刷新失败 / 未登录），共 15 项断言。
+
+```
+$ npm test
+全部通过
+$ LEGACY=1 npm test      # 把 1.0.0 的那行 payload 在内存里还原
+--- 3. 点击刷新：请求在途 ---
+FAIL  金额节点仍在        实际: undefined      期望: "¥3.63"
+FAIL  标签没有退化成未登录  实际: "余额 未登录"   期望: "余额"
+FAIL  data-state 保持 ready 实际: "absent"      期望: "ready"
+3 项失败
+```
+
+即：修复前，任何一次重新读取（点击、聚焦、5 分钟轮询）都会让金额瞬间被「未登录」顶掉，直到响应返回——这正是报上来的现象。
 
 **未验证**：浏览器里的实际渲染。请刷新 Web UI 目视确认。
 
