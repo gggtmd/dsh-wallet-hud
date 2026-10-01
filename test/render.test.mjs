@@ -16,6 +16,7 @@ const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
 // Control experiment: with LEGACY=1 the pre-fix payload line is restored in
 // memory only, so the same assertions can show what the bug actually did.
 const LEGACY = process.env.LEGACY === '1'
+const NO_PRIMITIVES = process.env.NO_PRIMITIVES === '1'
 const patched = LEGACY
 	? source.replace(
 			'const payload = state.value',
@@ -50,8 +51,12 @@ const React = {
 }
 
 new Function(patched)()
+/** Marker component: the render helper reads its `label` prop back. */
+const Tooltip = () => null
 const bundle = captured.factory((name) => {
 	if (name === 'react') return React
+	// NO_PRIMITIVES=1 models a composition that serves no primitives module.
+	if (name === '@deepseek-ai/dsh-client-ui-primitives') return NO_PRIMITIVES ? {} : { Tooltip }
 	throw new Error('unexpected require: ' + name)
 })
 
@@ -109,13 +114,20 @@ const byClass = (node, className) => {
 }
 const render = () => {
 	const el = seat.Component({ wide: true, wallet: store, t })
-	const amount = byClass(el, 'whud-amount')
-	const label = byClass(el, 'whud-label')
+	// With primitives the component returns a Tooltip wrapping the chip; the
+	// fallback (and the control experiment's shape) returns the chip directly.
+	const wrapped = el.type === Tooltip
+	const chip = wrapped ? el.children[0] : el
+	const amount = byClass(chip, 'whud-amount')
+	const label = byClass(chip, 'whud-label')
 	return {
 		amount: amount === undefined ? undefined : textOf(amount),
 		label: label === undefined ? undefined : textOf(label),
-		state: el.props['data-state'],
-		title: el.props.title,
+		state: chip.props['data-state'],
+		title: chip.props.title,
+		bubble: wrapped ? el.props.label : undefined,
+		side: wrapped ? el.props.side : undefined,
+		wrapped,
 	}
 }
 const ready = (balance) => ({
@@ -127,6 +139,8 @@ const ready = (balance) => ({
 	},
 })
 const flush = () => new Promise((resolve) => setImmediate(resolve))
+/** Bubble text, falling back to the native title when primitives are absent. */
+const bubbleOf = (view) => view.bubble ?? view.title ?? ''
 
 let failures = 0
 const check = (label, actual, expected) => {
@@ -158,7 +172,7 @@ r = render()
 check('金额节点仍在', r.amount, '¥3.63')
 check('标签没有退化成未登录', r.label, '余额')
 check('data-state 保持 ready', r.state, 'ready')
-check('tooltip 里出现「查询中」', r.title.includes('查询中'), true)
+check('tooltip 里出现「查询中」', bubbleOf(r).includes('查询中'), true)
 
 console.log('\n--- 4. 刷新返回，金额更新 ---')
 pending.shift().resolve(ready('12.34'))
@@ -183,6 +197,36 @@ r = render()
 check('占位文案', r.label, '余额 未登录')
 check('金额节点已撤下', r.amount, undefined)
 check('data-state', r.state, 'absent')
+
+console.log('\n--- 7. tooltip 文案排版 ---')
+store.refresh()
+pending.shift().resolve({
+	ok: true,
+	value: {
+		status: 'ready',
+		value: [{ currency: 'CNY', balance: '1.99' }],
+		bonusWallets: [{ currency: 'CNY', balance: '5.00' }],
+	},
+})
+await flush()
+r = render()
+const g = '\u00a0\u00a0'
+const bubbleLines = bubbleOf(r).split('\n')
+check('充值余额与金额同一行', bubbleLines[0], '充值余额' + g + '¥1.99')
+check('赠送余额与金额同一行', bubbleLines[1], '赠送余额' + g + '¥5.00')
+check('更新时间与操作合并成末行', /^更新于 \d\d:\d\d:\d\d · 点击刷新$/.test(bubbleLines[2]), true)
+check('一共 3 行', bubbleLines.length, 3)
+check('没有以缩进开头的孤立金额行', bubbleLines.some((line) => line.startsWith('  ')), false)
+
+console.log('\n--- 8. 依赖回落 ---')
+if (NO_PRIMITIVES) {
+	check('不包 Tooltip', r.wrapped, false)
+	check('退回原生 title 气泡', typeof r.title === 'string' && r.title.includes('充值余额'), true)
+} else {
+	check('包上官方 Tooltip', r.wrapped, true)
+	check('有 Tooltip 时不再设原生 title', r.title, undefined)
+	check('气泡放在锚点上方', r.side, 'top')
+}
 
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 项失败'}`)
 process.exit(failures === 0 ? 0 : 1)

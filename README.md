@@ -20,13 +20,34 @@
 
 币种取钱包自己上报的币种（优先有正余额的钱包），暂时取不到时按 `CNY` 显示。
 
+## 悬浮提示
+
+用官方 `Tooltip` 原语（`@deepseek-ai/dsh-client-ui-primitives`）而不是 `title` 属性：
+
+- **原生 `title` 是系统绘制的**，窗口未激活时不弹——表现为"要先点一下窗口才能看到提示"；而且它无法排版、无法主题化。换成 DOM 内的气泡后只受鼠标事件驱动。
+- `Tooltip` 的气泡样式是 `white-space: pre-line`，所以**换行会保留**，`label` 传多行字符串即可；底色取自 `--dsw-alias-tooltip-bg`，与全应用其它 tooltip 一致。
+- 参数：`side: 'top'`（弹在胶囊上方）、`portal: true`（挂到 `document.body`，免受侧边栏祖先的裁剪/层叠上下文影响）、`maxWidth: 280`（长错误信息不会撑到默认的半屏宽）。
+
+排版规则（`client.js` 里 `lines` 的构造）：
+
+```
+充值余额  ¥1.99              ← 类别与金额同一行
+赠送余额  ¥5.00              ← 有赠送余额时才出现
+更新于 17:09:03 · 点击刷新    ← 新鲜度与唯一操作合并成一行
+```
+
+两处细节值得记下来，否则会踩坑：
+
+1. **间隔必须用不换行空格 `\u00a0`**。`pre-line` 会把连续普通空格折叠成一个，用两个 `\u0020` 对齐是无效的。
+2. `Tooltip` 会在胶囊外**再包一层块级锚点 span**，胶囊就不再是被拉伸的 flex item，会顶上对齐。所以有一条 `.whud-chip{height:100%}` 让它撑满该行——用真实侧边栏 CSS 量过：加与不加这层包装，胶囊几何完全一致（`chipH=50`、`chipCenter=25`）。
+
 ## 文件
 
 ```
 package.json        包清单：dsh.bundle.patch + dsh.client(platform:web, immediately:true)
 cordis.patch.yml    bundle 的补丁：insert 一行 wallet-hud
 index.js            host 半边，空 apply()（必须存在，供 Loader import）
-client.js           浏览器 bundle（手写 lazy-CJS 格式，只 require 基线模块 react）
+client.js           浏览器 bundle（手写 lazy-CJS 格式，只 require 两个基线模块：react、ui-primitives）
 locale/en.json      插件管理器卡片文案（标题/描述），zh.json 同结构
 test/render.test.mjs 渲染回归测试（`npm test`；`LEGACY=1` 复现 1.0.0 的「未登录」闪烁）
 ```
@@ -40,7 +61,9 @@ window.__ModuleLoader__.load({
 })
 ```
 
-加载器的实际实现里 `exports` 取的是**工厂的返回值**（`exports: registered.factory(require)`），所以模板这种"返回 exports"的写法成立；而 `client.js` 里所有 `require()` 都必须落在浏览器基线模块表（react、react/jsx-runtime、react-dom、cordis、dsh-client-store、dsh-client-ui-slots、dsh-client-ui-primitives、dsh-client-ui-dockkit）里，本插件只用到 `react`。
+加载器的实际实现里 `exports` 取的是**工厂的返回值**（`exports: registered.factory(require)`），所以模板这种"返回 exports"的写法成立；而 `client.js` 里所有 `require()` 都必须落在浏览器基线模块表（react、react/jsx-runtime、react-dom、cordis、dsh-client-store、dsh-client-ui-slots、dsh-client-ui-primitives、dsh-client-ui-dockkit）里。本插件用到两个：`react` 与 `@deepseek-ai/dsh-client-ui-primitives` 的 `Tooltip`。
+
+`ui-primitives` 是**基线模块**，不是可注入的 client 条目——所以它**不**需要（也不应该）列进 `dsh.client.inject`；官方 `ui-settings-account` 等包同样直接 `require` 它而不声明 inject。`Tooltip` 取不到时插件会退回原生 `title` 气泡，不会整块挂掉。
 
 UI 只用 `--dsw-alias-*` 主题 token，不 import 任何 Harness 客户端包（官方 `practices.md` 的要求），文案走 `ctx.locale`（zh/en 双字典，键集以 `zh` 为准）。
 

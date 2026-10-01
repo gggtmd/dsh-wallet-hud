@@ -16,6 +16,12 @@ window.__ModuleLoader__.load({
 	id: '@local/dsh-wallet-hud',
 	factory: (require) => {
 		const React = require('react')
+		/**
+		 * Baseline primitives module. `Tooltip` is optional here: a composition
+		 * that somehow serves no primitives still gets a working chip, just with
+		 * the native `title` bubble instead of the app-styled one.
+		 */
+		const Tooltip = require('@deepseek-ai/dsh-client-ui-primitives').Tooltip
 
 		/** Locale namespace of this plugin's dictionaries. */
 		const NS = 'wallet-hud'
@@ -75,6 +81,13 @@ window.__ModuleLoader__.load({
 .whud-chip .whud-amount{color:var(--dsw-alias-label-primary,#111827);font-variant-numeric:tabular-nums}
 .whud-chip .whud-label{color:var(--dsw-alias-label-tertiary,#9ca3af);overflow:hidden;text-overflow:ellipsis}
 .whud-chip[data-wide="false"]{justify-content:center;padding:3px 4px}
+/* Tooltip wraps the chip in its own block-level anchor span, which would leave
+   the chip top-aligned in a taller action row instead of stretched across it.
+   Filling the wrapper keeps the amount exactly where it sat unwrapped; where
+   the wrapper's height is auto (the collapsed rail) this resolves to auto and
+   changes nothing. Measured against the real shell CSS: unwrapped and wrapped
+   geometry are identical with this rule. */
+.whud-chip{height:100%}
 `
 		/** Idempotence key for the injected style element. */
 		const CSS_TAG_ID = '@local/dsh-wallet-hud/wallet-hud.css'
@@ -306,34 +319,49 @@ window.__ModuleLoader__.load({
 			const total = owned.reduce((sum, entry) => sum + Number(entry.balance), 0)
 			const bonusTotal = bonusOwned.reduce((sum, entry) => sum + Number(entry.balance), 0)
 
+			/**
+			 * One line per wallet category, amount beside its label instead of on
+			 * an indented line of its own. The bubble collapses runs of ordinary
+			 * spaces (`white-space: pre-line`), so the label/amount gap is made of
+			 * non-breaking spaces — the only kind that survives there and keeps
+			 * the amounts of the two categories in one column.
+			 */
+			const GAP = '\u00a0\u00a0'
+			const amountsOf = (entries) =>
+				entries
+					.map((entry) => (SYMBOLS[entry.currency] ?? entry.currency + ' ') + formatBalance(entry.balance))
+					.join('  ')
 			const lines = []
-			if (owned.length > 0) {
-				lines.push(t('wallet.tooltip.recharge'))
-				for (const entry of owned) lines.push('  ' + (SYMBOLS[entry.currency] ?? entry.currency + ' ') + formatBalance(entry.balance))
-			}
-			if (bonusTotal > 0) {
-				lines.push(t('wallet.tooltip.bonus'))
-				for (const entry of bonusOwned) lines.push('  ' + (SYMBOLS[entry.currency] ?? entry.currency + ' ') + formatBalance(entry.balance))
-			}
+			if (owned.length > 0) lines.push(t('wallet.tooltip.recharge') + GAP + amountsOf(owned))
+			if (bonusTotal > 0) lines.push(t('wallet.tooltip.bonus') + GAP + amountsOf(bonusOwned))
 			if (outcome === 'absent') lines.push(t('wallet.tooltip.signedOut'))
 			if (outcome === 'failed') {
 				lines.push(state.error === 'unsupported' ? t('wallet.error.unsupported') : state.error ?? t('wallet.failed'))
 			}
-			if (state.at > 0) lines.push(t('wallet.tooltip.updated', { time: formatTime(state.at) }))
-			if (state.phase === 'refreshing') lines.push(t('wallet.loading'))
-			lines.push(t('wallet.tooltip.hint'))
+			/** Freshness and the one action the chip offers, folded onto one line. */
+			const meta = []
+			if (state.at > 0) meta.push(t('wallet.tooltip.updated', { time: formatTime(state.at) }))
+			meta.push(
+				state.phase === 'loading' || state.phase === 'refreshing'
+					? t('wallet.loading')
+					: t('wallet.tooltip.hint'),
+			)
+			lines.push(meta.join(' · '))
 
 			const placeholder =
 				outcome === 'loading' ? t('wallet.loading') : outcome === 'failed' ? t('wallet.failed') : t('wallet.signedOut')
 
-			return React.createElement(
+			const chip = React.createElement(
 				'button',
 				{
 					type: 'button',
 					className: 'whud-chip',
 					'data-state': outcome,
 					'data-wide': wide ? 'true' : 'false',
-					title: lines.join('\n'),
+					// Kept only as a fallback for a composition without primitives:
+					// the native bubble is OS-drawn, so it stays hidden while the
+					// window is not key, and it cannot be laid out or themed.
+					title: Tooltip === undefined ? lines.join('\n') : undefined,
 					'aria-label': t('wallet.refresh'),
 					onClick: () => void wallet.refresh(),
 				},
@@ -353,6 +381,18 @@ window.__ModuleLoader__.load({
 							{ className: 'whud-label' },
 							wide ? t('wallet.label') + ' ' + placeholder : placeholder,
 						),
+			)
+			if (Tooltip === undefined) return chip
+			/**
+			 * The app-styled bubble: rendered in the DOM, so hovering always shows
+			 * it, and `pre-line` keeps the line breaks above. `portal` frees it from
+			 * any ancestor clipping or stacking context, `maxWidth` caps a long
+			 * transport error instead of letting it run the half-viewport default.
+			 */
+			return React.createElement(
+				Tooltip,
+				{ label: lines.join('\n'), side: 'top', portal: true, maxWidth: 280 },
+				chip,
 			)
 		}
 
