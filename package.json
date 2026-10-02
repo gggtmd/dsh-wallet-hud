@@ -1,13 +1,30 @@
 {
   "name": "@local/dsh-wallet-hud",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node test/render.test.mjs"
   },
   "description": "Sidebar DeepSeek wallet balance for the Harness Web UI",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "plugin",
+    "wallet",
+    "balance"
+  ],
   "license": "MIT",
+  "author": "gggtmd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gggtmd/dsh-wallet-hud.git"
+  },
+  "homepage": "https://github.com/gggtmd/dsh-wallet-hud#readme",
+  "bugs": {
+    "url": "https://github.com/gggtmd/dsh-wallet-hud/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -18,7 +35,9 @@
     "index.js",
     "client.js",
     "cordis.patch.yml",
-    "locale/*.json"
+    "locale/*.json",
+    "CHANGELOG.md",
+    "README.en.md"
   ],
   "dsh": {
     "bundle": {
